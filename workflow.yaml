@@ -1,0 +1,55 @@
+name: Build Test and Push Docker Image
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  docker-ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build -t login-app:test .
+
+      - name: Test Docker container
+        run: |
+          docker run -d \
+            --name login-test \
+            -p 8080:80 \
+            login-app:test
+
+          sleep 3
+          curl --fail http://localhost:8080/
+
+          docker stop login-test
+          docker rm login-test
+
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Tag and push image
+        if: github.event_name == 'push'
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          docker tag login-app:test \
+            "$DOCKERHUB_USERNAME/login-app:latest"
+
+          docker tag login-app:test \
+            "$DOCKERHUB_USERNAME/login-app:${GITHUB_SHA}"
+
+          docker push "$DOCKERHUB_USERNAME/login-app:latest"
+          docker push "$DOCKERHUB_USERNAME/login-app:${GITHUB_SHA}"
